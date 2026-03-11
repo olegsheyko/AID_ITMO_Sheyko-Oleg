@@ -1,33 +1,32 @@
 ﻿#pragma once
 #include "states/IGameState.h"
 #include "core/Logger.h"
-#include "render/ShaderProgram.h"
-#include <glad/glad.h>
-#include <GLFW/glfw3.h>
+#include "ecs/Entity.h"
+#include "ecs/RenderSystem.h"
+#include "ecs/SpinSystem.h"
+#include "ecs/World.h"
+
+class IRenderAdapter;
 
 // Main gameplay state.
 class GameplayState : public IGameState {
 public:
-    void onEnter() override;
-    void onExit() override;
-    void update(float dt) override;
-    void render() override;
+	explicit GameplayState(IRenderAdapter& renderer);
+
+	void onEnter() override;
+	void onExit() override;
+	void update(float dt) override;
+	void render() override;
 
 private:
-	ShaderProgram shader_; // Shader used to draw the triangle.
+	void createScene();
+	void handleInput(float dt);
+	void attachChild(Entity parent, Entity child);
 
-	GLuint VAO_ = 0; // Vertex Array Object for the triangle.
-	GLuint VBO_ = 0; // Vertex Buffer Object for the triangle.
-
-    float x_ = 0.0f; // Horizontal triangle offset.
-    float y_ = 0.0f;
-
-	float centerX_ = 0.0f; // Triangle center on the X axis.
-	float centerY_ = 0.0f; // Triangle center on the Y axis.
-
-	float scale_ = 1.0f; // Current object scale.
-	float rotation_ = 0.0f; // Current object rotation in radians.
-
+	World world_;
+	SpinSystem spinSystem_;
+	RenderSystem renderSystem_;
+	Entity controllableEntity_ = kInvalidEntity;
 	bool rmbWasPressed_ = false; // Edge detection for the right mouse button.
 	bool lmbWasPressed_ = false; // Edge detection for the left mouse button.
 	bool mmbWasPressed_ = false; // Edge detection for the middle mouse button.

@@ -24,6 +24,9 @@ set_target_properties(glfw PROPERTIES
 add_executable(GameEngine
     src/main.cpp
     src/core/Application.cpp
+    src/ecs/RenderSystem.cpp
+    src/ecs/SpinSystem.cpp
+    src/ecs/World.cpp
     src/render/OpenGLRenderAdapter.cpp
     src/states/StateManager.cpp
     src/states/LoadingState.cpp

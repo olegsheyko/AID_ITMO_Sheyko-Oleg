@@ -1,107 +1,146 @@
 ﻿#include "states/GameplayState.h"
+#include "ecs/Components.h"
+#include "render/IRenderAdapter.h"
+
 #include <GLFW/glfw3.h>
-#include <cmath>
+#include <algorithm>
+
+namespace {
+constexpr float kMoveSpeed = 1.0f;
+constexpr float kScaleStep = 0.1f;
+constexpr float kRotationStep = 3.1415926f / 4.0f;
+constexpr float kMinScale = 0.1f;
+}
+
+GameplayState::GameplayState(IRenderAdapter& renderer)
+	: renderSystem_(renderer) {
+}
 
 void GameplayState::onEnter() {
-    LOG_INFO("GameplayState: entered");
-
-    if (!shader_.load("assets/shaders/vertex.glsl", "assets/shaders/fragment.glsl")) {
-        LOG_ERROR("GameplayState: failed to load shaders");
-        return;
-    }
-
-    float vertices[] = {
-        -0.5f, -0.5f, 0.0f,  // Bottom-left vertex.
-         0.5f, -0.5f, 0.0f,  // Bottom-right vertex.
-         0.0f,  0.5f, 0.0f   // Top-center vertex.
-    };
-
-	centerX_ = (vertices[0] + vertices[3] + vertices[6]) / 3.0f; // Average X center.
-	centerY_ = (vertices[1] + vertices[4] + vertices[7]) / 3.0f; // Average Y center.
-
-	glGenVertexArrays(1, &VAO_);
-	glGenBuffers(1, &VBO_);
-
-	glBindVertexArray(VAO_);
-
-	glBindBuffer(GL_ARRAY_BUFFER, VBO_);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-	glEnableVertexAttribArray(0);
-
-	glBindVertexArray(0); // Unbind VAO to avoid accidental later changes.
+	LOG_INFO("GameplayState: entered");
+	world_.clear();
+	createScene();
+	lmbWasPressed_ = false;
+	rmbWasPressed_ = false;
+	mmbWasPressed_ = false;
 }
 
 void GameplayState::onExit() {
-    LOG_INFO("GameplayState: exited");
-	glDeleteVertexArrays(1, &VAO_);
-    glDeleteBuffers(1, &VBO_);
-	shader_.destroy();
+	LOG_INFO("GameplayState: exited");
+	world_.clear();
+	controllableEntity_ = kInvalidEntity;
 }
 
 void GameplayState::update(float dt) {
-    float speed = 1.0f * dt;
-
-    if (glfwGetKey(glfwGetCurrentContext(), GLFW_KEY_LEFT) == GLFW_PRESS) {
-        x_ -= speed;
-        LOG_INFO("GameplayState: move left  x=" + std::to_string(x_));
-    }
-    if (glfwGetKey(glfwGetCurrentContext(), GLFW_KEY_RIGHT) == GLFW_PRESS) {
-        x_ += speed;
-        LOG_INFO("GameplayState: move right x=" + std::to_string(x_));
-    }
-    if (glfwGetKey(glfwGetCurrentContext(), GLFW_KEY_UP) == GLFW_PRESS) {
-        y_ += speed;
-        LOG_INFO("GameplayState: move up    y=" + std::to_string(y_));
-    }
-    if (glfwGetKey(glfwGetCurrentContext(), GLFW_KEY_DOWN) == GLFW_PRESS) {
-        y_ -= speed;
-        LOG_INFO("GameplayState: move down  y=" + std::to_string(y_));
-    }
-
-    // LMB input.
-    bool lmbNow = glfwGetMouseButton(glfwGetCurrentContext(), GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
-    if (lmbNow && !lmbWasPressed_) {
-        scale_ += 0.1f;
-        LOG_INFO("GameplayState: scale up   scale=" + std::to_string(scale_));
-    }
-    lmbWasPressed_ = lmbNow;
-
-    // RMB input.
-    bool rmbNow = glfwGetMouseButton(glfwGetCurrentContext(), GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
-    if (rmbNow && !rmbWasPressed_) {
-        rotation_ += 3.14159f / 4.0f;
-        LOG_INFO("GameplayState: rotate     rotation=" + std::to_string(rotation_));
-    }
-    rmbWasPressed_ = rmbNow;
-
-    // MMB input.
-    bool mmbNow = glfwGetMouseButton(glfwGetCurrentContext(), GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS;
-    if (mmbNow && !mmbWasPressed_) {
-        scale_ -= 0.1f;
-        LOG_INFO("GameplayState: scale down scale=" + std::to_string(scale_));
-    }
-    mmbWasPressed_ = mmbNow;
+	handleInput(dt);
+	spinSystem_.update(world_, dt);
 }
 
 void GameplayState::render() {
-    if (shader_.getId() == 0 || VAO_ == 0) {
-        return;
-    }
+	renderSystem_.render(world_);
+}
 
-    shader_.use();
+void GameplayState::createScene() {
+	controllableEntity_ = world_.createEntity();
+	world_.addComponent<Tag>(controllableEntity_, "PlayerGroupRoot");
+	world_.addComponent<Transform>(controllableEntity_, Transform{{-0.50f, -0.05f, 0.0f}, 0.0f, {0.32f, 0.22f, 1.0f}});
+	world_.addComponent<MeshRenderer>(controllableEntity_, MeshRenderer{PrimitiveType::Quad, {0.95f, 0.35f, 0.28f, 1.0f}});
+	world_.addComponent<Hierarchy>(controllableEntity_, Hierarchy{});
 
-	GLint posLoc = glGetUniformLocation(shader_.getId(), "uPosition");
-	GLint scaleLoc = glGetUniformLocation(shader_.getId(), "uScale");
-	GLint rotLoc = glGetUniformLocation(shader_.getId(), "uRotation");
-	GLint centerLoc = glGetUniformLocation(shader_.getId(), "uCenter");
+	const Entity wing = world_.createEntity();
+	world_.addComponent<Tag>(wing, "PlayerWing");
+	world_.addComponent<Transform>(wing, Transform{{0.52f, 0.00f, 0.0f}, 0.35f, {0.24f, 0.10f, 1.0f}});
+	world_.addComponent<MeshRenderer>(wing, MeshRenderer{PrimitiveType::Quad, {1.00f, 0.76f, 0.32f, 1.0f}});
+	attachChild(controllableEntity_, wing);
 
-	glUniform2f(posLoc, x_, y_);
-	glUniform1f(scaleLoc, scale_);
-    glUniform1f(rotLoc, rotation_);
-    glUniform2f(centerLoc, centerX_, centerY_);
+	const Entity wingTip = world_.createEntity();
+	world_.addComponent<Tag>(wingTip, "PlayerWingTip");
+	world_.addComponent<Transform>(wingTip, Transform{{0.72f, 0.00f, 0.0f}, 0.15f, {0.16f, 0.16f, 1.0f}});
+	world_.addComponent<MeshRenderer>(wingTip, MeshRenderer{PrimitiveType::Triangle, {1.00f, 0.95f, 0.65f, 1.0f}});
+	attachChild(wing, wingTip);
 
-    glBindVertexArray(VAO_);
-    glDrawArrays(GL_TRIANGLES, 0, 3); // Draw 3 vertices == 1 triangle.
+	const Entity beacon = world_.createEntity();
+	world_.addComponent<Tag>(beacon, "PlayerBeacon");
+	world_.addComponent<Transform>(beacon, Transform{{0.00f, 0.62f, 0.0f}, 0.0f, {0.20f, 0.20f, 1.0f}});
+	world_.addComponent<MeshRenderer>(beacon, MeshRenderer{PrimitiveType::Triangle, {0.96f, 0.94f, 0.40f, 1.0f}});
+	world_.addComponent<Spin>(beacon, Spin{2.20f});
+	attachChild(controllableEntity_, beacon);
+
+	const Entity rotatingQuad = world_.createEntity();
+	world_.addComponent<Tag>(rotatingQuad, "RotatingQuad");
+	world_.addComponent<Transform>(rotatingQuad, Transform{{0.20f, 0.42f, 0.0f}, 0.0f, {0.30f, 0.30f, 1.0f}});
+	world_.addComponent<MeshRenderer>(rotatingQuad, MeshRenderer{PrimitiveType::Quad, {0.20f, 0.70f, 0.95f, 1.0f}});
+	world_.addComponent<Spin>(rotatingQuad, Spin{1.35f});
+
+	const Entity rotatingTriangle = world_.createEntity();
+	world_.addComponent<Tag>(rotatingTriangle, "BeaconTriangle");
+	world_.addComponent<Transform>(rotatingTriangle, Transform{{0.68f, 0.05f, 0.0f}, -0.35f, {0.18f, 0.18f, 1.0f}});
+	world_.addComponent<MeshRenderer>(rotatingTriangle, MeshRenderer{PrimitiveType::Triangle, {1.00f, 0.88f, 0.30f, 1.0f}});
+	world_.addComponent<Spin>(rotatingTriangle, Spin{-2.10f});
+
+	const Entity ground = world_.createEntity();
+	world_.addComponent<Tag>(ground, "Ground");
+	world_.addComponent<Transform>(ground, Transform{{0.00f, -0.72f, 0.0f}, 0.0f, {1.45f, 0.14f, 1.0f}});
+	world_.addComponent<MeshRenderer>(ground, MeshRenderer{PrimitiveType::Quad, {0.25f, 0.70f, 0.35f, 1.0f}});
+
+	LOG_INFO("GameplayState: created ECS scene with hierarchy and 7 entities");
+}
+
+void GameplayState::handleInput(float dt) {
+	if (!world_.isAlive(controllableEntity_)) {
+		return;
+	}
+
+	GLFWwindow* window = glfwGetCurrentContext();
+	if (window == nullptr) {
+		return;
+	}
+
+	Transform& transform = world_.getComponent<Transform>(controllableEntity_);
+	const float moveStep = kMoveSpeed * dt;
+
+	if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS) {
+		transform.position.x -= moveStep;
+	}
+	if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS) {
+		transform.position.x += moveStep;
+	}
+	if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS) {
+		transform.position.y += moveStep;
+	}
+	if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS) {
+		transform.position.y -= moveStep;
+	}
+
+	const bool lmbNow = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+	if (lmbNow && !lmbWasPressed_) {
+		transform.scale.x += kScaleStep;
+		transform.scale.y += kScaleStep;
+	}
+	lmbWasPressed_ = lmbNow;
+
+	const bool rmbNow = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
+	if (rmbNow && !rmbWasPressed_) {
+		transform.rotation += kRotationStep;
+	}
+	rmbWasPressed_ = rmbNow;
+
+	const bool mmbNow = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS;
+	if (mmbNow && !mmbWasPressed_) {
+		transform.scale.x = std::max(kMinScale, transform.scale.x - kScaleStep);
+		transform.scale.y = std::max(kMinScale, transform.scale.y - kScaleStep);
+	}
+	mmbWasPressed_ = mmbNow;
+}
+
+void GameplayState::attachChild(Entity parent, Entity child) {
+	if (!world_.hasComponent<Hierarchy>(parent)) {
+		world_.addComponent<Hierarchy>(parent, Hierarchy{});
+	}
+
+	Hierarchy childHierarchy{};
+	childHierarchy.parent = parent;
+	world_.addComponent<Hierarchy>(child, childHierarchy);
+
+	world_.getComponent<Hierarchy>(parent).children.push_back(child);
 }

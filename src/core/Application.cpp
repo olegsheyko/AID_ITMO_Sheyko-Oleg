@@ -47,7 +47,7 @@ void Application::update(float dt) {
 		}
 	} else if (auto* menu = dynamic_cast<MenuState*>(current)) {
 		if (menu->shouldStartGame()) {
-			stateManager_.change(std::make_unique<GameplayState>());
+			stateManager_.change(std::make_unique<GameplayState>(*renderer_));
 		}
 	}
 }

@@ -17,8 +17,8 @@ compile_commands.json
 
 # Compiled binaries
 *.exe
-*.dll
-*.lib
+#*.dll
+#*.lib
 *.pdb
 *.ilk
 *.exp
