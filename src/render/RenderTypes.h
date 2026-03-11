@@ -1,6 +1,9 @@
 #pragma once
 
 enum class PrimitiveType {
+    Line,
     Triangle,
-    Quad
+    Quad,
+    Square = Quad,
+    Cube
 };

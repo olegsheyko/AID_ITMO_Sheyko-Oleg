@@ -23,18 +23,21 @@ private:
 		GLuint vao = 0;
 		GLuint vbo = 0;
 		GLsizei vertexCount = 0;
+		GLenum drawMode = GL_TRIANGLES;
 	};
 
 	bool createRenderResources();
 	void destroyRenderResources();
-	bool setupMesh(PrimitiveMesh& mesh, const float* vertices, GLsizei vertexCount);
+	bool setupMesh(PrimitiveMesh& mesh, const float* vertices, GLsizei vertexCount, GLenum drawMode);
 	const PrimitiveMesh* getMesh(PrimitiveType primitive) const;
 
 	GLFWwindow* window_ = nullptr;
 	bool initialized_ = false;
 	ShaderProgram shader_;
+	PrimitiveMesh lineMesh_;
 	PrimitiveMesh triangleMesh_;
 	PrimitiveMesh quadMesh_;
+	PrimitiveMesh cubeMesh_;
 	GLint modelLocation_ = -1;
 	GLint colorLocation_ = -1;
 };

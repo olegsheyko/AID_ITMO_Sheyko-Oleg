@@ -5,11 +5,11 @@
 class IRenderAdapter;
 class World;
 
-class RenderSystem : public System {
+class RenderSystem : public RenderSystemBase {
 public:
     explicit RenderSystem(IRenderAdapter& renderer);
 
-    void render(World& world);
+    void render(World& world) override;
 
 private:
     IRenderAdapter& renderer_;

@@ -19,6 +19,8 @@ GameplayState::GameplayState(IRenderAdapter& renderer)
 void GameplayState::onEnter() {
 	LOG_INFO("GameplayState: entered");
 	world_.clear();
+	world_.addUpdateSystem(spinSystem_);
+	world_.addRenderSystem(renderSystem_);
 	createScene();
 	lmbWasPressed_ = false;
 	rmbWasPressed_ = false;
@@ -33,11 +35,11 @@ void GameplayState::onExit() {
 
 void GameplayState::update(float dt) {
 	handleInput(dt);
-	spinSystem_.update(world_, dt);
+	world_.updateSystems(dt);
 }
 
 void GameplayState::render() {
-	renderSystem_.render(world_);
+	world_.renderSystems();
 }
 
 void GameplayState::createScene() {

@@ -1,6 +1,12 @@
 #include "render/OpenGLRenderAdapter.h"
 #include "core/Logger.h"
 
+namespace {
+void framebufferSizeCallback(GLFWwindow*, int width, int height) {
+	glViewport(0, 0, width, height);
+}
+}
+
 OpenGLRenderAdapter::~OpenGLRenderAdapter() {
 	shutdown();
 }
@@ -33,7 +39,10 @@ bool OpenGLRenderAdapter::init(int width, int height, const std::string& title) 
 		return false;
 	}
 
+	glfwSetFramebufferSizeCallback(window_, framebufferSizeCallback);
+	glViewport(0, 0, width, height);
 	glfwSwapInterval(1);
+	glEnable(GL_DEPTH_TEST);
 
 	if (!createRenderResources()) {
 		LOG_ERROR("OpenGLRenderAdapter: Failed to create render resources");
@@ -71,7 +80,7 @@ void OpenGLRenderAdapter::drawPrimitive(PrimitiveType primitive, const Mat4& mod
 	glUniform4f(colorLocation_, color.x, color.y, color.z, color.w);
 
 	glBindVertexArray(mesh->vao);
-	glDrawArrays(GL_TRIANGLES, 0, mesh->vertexCount);
+	glDrawArrays(mesh->drawMode, 0, mesh->vertexCount);
 	glBindVertexArray(0);
 }
 
@@ -115,6 +124,11 @@ bool OpenGLRenderAdapter::createRenderResources() {
 		return false;
 	}
 
+	static const float lineVertices[] = {
+		-0.5f, 0.0f, 0.0f,
+		 0.5f, 0.0f, 0.0f
+	};
+
 	static const float triangleVertices[] = {
 		-0.5f, -0.5f, 0.0f,
 		 0.5f, -0.5f, 0.0f,
@@ -130,11 +144,39 @@ bool OpenGLRenderAdapter::createRenderResources() {
 		-0.5f,  0.5f, 0.0f
 	};
 
-	if (!setupMesh(triangleMesh_, triangleVertices, 3)) {
+	static const float cubeVertices[] = {
+		-0.5f, -0.5f,  0.5f,  0.5f, -0.5f,  0.5f,  0.5f,  0.5f,  0.5f,
+		-0.5f, -0.5f,  0.5f,  0.5f,  0.5f,  0.5f, -0.5f,  0.5f,  0.5f,
+
+		-0.5f, -0.5f, -0.5f, -0.5f,  0.5f, -0.5f,  0.5f,  0.5f, -0.5f,
+		-0.5f, -0.5f, -0.5f,  0.5f,  0.5f, -0.5f,  0.5f, -0.5f, -0.5f,
+
+		-0.5f, -0.5f, -0.5f, -0.5f, -0.5f,  0.5f, -0.5f,  0.5f,  0.5f,
+		-0.5f, -0.5f, -0.5f, -0.5f,  0.5f,  0.5f, -0.5f,  0.5f, -0.5f,
+
+		 0.5f, -0.5f, -0.5f,  0.5f,  0.5f, -0.5f,  0.5f,  0.5f,  0.5f,
+		 0.5f, -0.5f, -0.5f,  0.5f,  0.5f,  0.5f,  0.5f, -0.5f,  0.5f,
+
+		-0.5f,  0.5f, -0.5f, -0.5f,  0.5f,  0.5f,  0.5f,  0.5f,  0.5f,
+		-0.5f,  0.5f, -0.5f,  0.5f,  0.5f,  0.5f,  0.5f,  0.5f, -0.5f,
+
+		-0.5f, -0.5f, -0.5f,  0.5f, -0.5f, -0.5f,  0.5f, -0.5f,  0.5f,
+		-0.5f, -0.5f, -0.5f,  0.5f, -0.5f,  0.5f, -0.5f, -0.5f,  0.5f
+	};
+
+	if (!setupMesh(lineMesh_, lineVertices, 2, GL_LINES)) {
 		return false;
 	}
 
-	if (!setupMesh(quadMesh_, quadVertices, 6)) {
+	if (!setupMesh(triangleMesh_, triangleVertices, 3, GL_TRIANGLES)) {
+		return false;
+	}
+
+	if (!setupMesh(quadMesh_, quadVertices, 6, GL_TRIANGLES)) {
+		return false;
+	}
+
+	if (!setupMesh(cubeMesh_, cubeVertices, 36, GL_TRIANGLES)) {
 		return false;
 	}
 
@@ -152,16 +194,19 @@ void OpenGLRenderAdapter::destroyRenderResources() {
 			mesh.vao = 0;
 		}
 		mesh.vertexCount = 0;
+		mesh.drawMode = GL_TRIANGLES;
 	};
 
+	destroyMesh(lineMesh_);
 	destroyMesh(triangleMesh_);
 	destroyMesh(quadMesh_);
+	destroyMesh(cubeMesh_);
 	modelLocation_ = -1;
 	colorLocation_ = -1;
 	shader_.destroy();
 }
 
-bool OpenGLRenderAdapter::setupMesh(PrimitiveMesh& mesh, const float* vertices, GLsizei vertexCount) {
+bool OpenGLRenderAdapter::setupMesh(PrimitiveMesh& mesh, const float* vertices, GLsizei vertexCount, GLenum drawMode) {
 	glGenVertexArrays(1, &mesh.vao);
 	glGenBuffers(1, &mesh.vbo);
 
@@ -177,15 +222,20 @@ bool OpenGLRenderAdapter::setupMesh(PrimitiveMesh& mesh, const float* vertices, 
 	glBindVertexArray(0);
 
 	mesh.vertexCount = vertexCount;
+	mesh.drawMode = drawMode;
 	return true;
 }
 
 const OpenGLRenderAdapter::PrimitiveMesh* OpenGLRenderAdapter::getMesh(PrimitiveType primitive) const {
 	switch (primitive) {
+	case PrimitiveType::Line:
+		return &lineMesh_;
 	case PrimitiveType::Triangle:
 		return &triangleMesh_;
 	case PrimitiveType::Quad:
 		return &quadMesh_;
+	case PrimitiveType::Cube:
+		return &cubeMesh_;
 	default:
 		return nullptr;
 	}

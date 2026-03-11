@@ -1,7 +1,10 @@
 #pragma once
 
+#include "ecs/Component.h"
 #include "ecs/Entity.h"
+#include "ecs/System.h"
 
+#include <algorithm>
 #include <cassert>
 #include <memory>
 #include <type_traits>
@@ -9,6 +12,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 class World {
 public:
@@ -18,8 +22,14 @@ public:
 
     bool isAlive(Entity entity) const;
 
+    void addUpdateSystem(UpdateSystem& system);
+    void addRenderSystem(RenderSystemBase& system);
+    void updateSystems(float dt);
+    void renderSystems();
+
     template <typename T, typename... Args>
     T& addComponent(Entity entity, Args&&... args) {
+        static_assert(kIsComponent<T>, "T must satisfy the Component contract");
         assert(isAlive(entity));
         auto& storage = getOrCreateStorage<T>().components;
         auto [it, inserted] = storage.emplace(entity, T{std::forward<Args>(args)...});
@@ -31,24 +41,28 @@ public:
 
     template <typename T>
     bool hasComponent(Entity entity) const {
+        static_assert(kIsComponent<T>, "T must satisfy the Component contract");
         const auto* storage = tryGetStorage<T>();
         return storage != nullptr && storage->components.find(entity) != storage->components.end();
     }
 
     template <typename T>
     T& getComponent(Entity entity) {
+        static_assert(kIsComponent<T>, "T must satisfy the Component contract");
         assert(isAlive(entity));
-        return getOrCreateStorage<T>().components.at(entity);
+        return getStorage<T>().components.at(entity);
     }
 
     template <typename T>
     const T& getComponent(Entity entity) const {
+        static_assert(kIsComponent<T>, "T must satisfy the Component contract");
         assert(isAlive(entity));
         return getStorage<T>().components.at(entity);
     }
 
     template <typename T>
     void removeComponent(Entity entity) {
+        static_assert(kIsComponent<T>, "T must satisfy the Component contract");
         auto* storage = tryGetStorage<T>();
         if (storage != nullptr) {
             storage->components.erase(entity);
@@ -57,6 +71,7 @@ public:
 
     template <typename TFirst, typename... TRest, typename Func>
     void forEach(Func&& func) {
+        static_assert(kIsComponent<TFirst> && (... && kIsComponent<TRest>), "All component types must satisfy the Component contract");
         auto* firstStorage = tryGetStorage<TFirst>();
         if (firstStorage == nullptr) {
             return;
@@ -135,4 +150,6 @@ private:
     Entity nextEntity_ = 1;
     std::unordered_set<Entity> aliveEntities_;
     std::unordered_map<std::type_index, std::unique_ptr<IStorage>> storages_;
+    std::vector<UpdateSystem*> updateSystems_;
+    std::vector<RenderSystemBase*> renderSystems_;
 };
